@@ -1,5 +1,8 @@
 python-telegram-bot
+google-generativeai
 pymongo
-requests
+python-dotenv
 textblob
-transformers
+nltk
+matplotlib
+google-cloud-translate
