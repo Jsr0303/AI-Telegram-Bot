@@ -1,8 +1,0 @@
-python-telegram-bot
-google-generativeai
-pymongo
-python-dotenv
-textblob
-nltk
-matplotlib
-google-cloud-translate
