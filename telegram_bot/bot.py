@@ -1,26 +1,28 @@
 import os
 import logging
 import requests
-from datetime import datetime
+import shutil
+import nest_asyncio
+import asyncio
+from datetime import datetime 
 from dotenv import load_dotenv
 from pymongo import MongoClient
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
-from textblob import TextBlob
-from transformers import pipeline
-import asyncio
 
-# Load environment variables
 load_dotenv()
 
-# Get API Keys and Tokens from .env
+# Constants for API URLs and keys
+GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={os.getenv('GEMINI_API_KEY')}"
+BRAVE_SEARCH_API_KEY = os.getenv("BRAVE_SEARCH_API_KEY")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-WEB_SEARCH_API_KEY = os.getenv("WEB_SEARCH_API_KEY")
 MONGO_URI = os.getenv("MONGO_URI")
 
-if not all([BOT_TOKEN, GEMINI_API_KEY, WEB_SEARCH_API_KEY, MONGO_URI]):
-    raise ValueError("Missing one or more environment variables! Check your .env file.")
+# Enable asyncio for Jupyter
+nest_asyncio.apply()
+
+
+GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
@@ -28,13 +30,10 @@ logger = logging.getLogger(__name__)
 
 # MongoDB setup
 client = MongoClient(MONGO_URI)
-db = client['AiBot']
-users_collection = db['users']
-chats_collection = db['chats']
-files_collection = db['files']
-
-# Hugging Face Sentiment Pipeline
-sentiment_pipeline = pipeline("sentiment-analysis")
+db = client["AiBot"]
+users_collection = db["users"]
+chats_collection = db["chats"]
+files_collection = db["files"]
 
 async def start(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
@@ -67,14 +66,20 @@ async def contact_handler(update: Update, context: CallbackContext) -> None:
 async def chat(update: Update, context: CallbackContext) -> None:
     user_input = update.message.text
     chat_id = update.message.chat_id
-
-    sentiment_category, sentiment_score = await analyze_sentiment(user_input)
+    
     try:
-        response = requests.post("https://api.generativeai.com/generate", headers={
-            "Authorization": f"Bearer {GEMINI_API_KEY}"
-        }, json={"prompt": user_input}).json()
+        payload = {
+            "contents": [{"parts": [{"text": user_input}]}]
+        }
 
-        bot_response = response.get('response', "Sorry, I couldn't understand that.")
+        response = requests.post(
+            GEMINI_API_URL,
+            headers={"Content-Type": "application/json"},
+            json=payload
+        ).json()
+
+        bot_response = response.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "Sorry, I couldn't understand that.")
+
     except Exception as e:
         logger.error(f"Gemini API Error: {e}")
         bot_response = "Sorry, there was an issue generating a response."
@@ -82,13 +87,11 @@ async def chat(update: Update, context: CallbackContext) -> None:
     chats_collection.insert_one({
         "chat_id": chat_id,
         "user_input": user_input,
-        "sentiment_category": sentiment_category,
-        "sentiment_score": sentiment_score,
         "bot_response": bot_response,
         "timestamp": datetime.utcnow()
     })
     
-    await update.message.reply_text(f"Sentiment: {sentiment_category} ({sentiment_score})\n{bot_response}")
+    await update.message.reply_text(bot_response)
 
 async def web_search(update: Update, context: CallbackContext) -> None:
     query = " ".join(context.args)
@@ -97,12 +100,14 @@ async def web_search(update: Update, context: CallbackContext) -> None:
         return
 
     try:
-        search_results = requests.get("https://api.bing.microsoft.com/v7.0/search", headers={
-            "Ocp-Apim-Subscription-Key": WEB_SEARCH_API_KEY
-        }, params={"q": query}).json()
+        search_results = requests.get(
+            "https://api.search.brave.com/res/v1/web/search",
+            headers={"Authorization": f"Bearer {BRAVE_SEARCH_API_KEY}"},
+            params={"q": query}
+        ).json()
 
         results = search_results.get('webPages', {}).get('value', [])[:3]
-        summary = "\n".join([f"{result['name']}: {result['url']}" for result in results])
+        summary = "\n".join([f"{result['title']}: {result['url']}" for result in results])
 
         await update.message.reply_text(f"Top results:\n{summary}" if summary else "No results found.")
     except Exception as e:
@@ -134,16 +139,6 @@ async def file_handler(update: Update, context: CallbackContext) -> None:
             logger.error(f"File Handling Error: {e}")
             await update.message.reply_text("Error processing the file.")
 
-async def analyze_sentiment(text: str):
-    try:
-        sentiment_result = sentiment_pipeline(text)[0]
-        return sentiment_result['label'], round(sentiment_result['score'], 2)
-    except Exception as e:
-        logger.error(f"Sentiment Analysis Error: {e}")
-        sentiment = TextBlob(text).sentiment.polarity
-        category = "Positive" if sentiment > 0.1 else "Negative" if sentiment < -0.1 else "Neutral"
-        return category, round(sentiment, 2)
-
 async def main() -> None:
     app = Application.builder().token(BOT_TOKEN).build()
     
@@ -154,17 +149,16 @@ async def main() -> None:
     app.add_handler(MessageHandler(filters.Document.ALL | filters.PHOTO, file_handler))
     
     logger.info("Bot is running...")
+    
+    await app.run_polling()
 
-if __name__ == "__main__":
-    try:
-        # Running the app directly without asyncio.run()
-        asyncio.get_event_loop().run_until_complete(main())
-    except RuntimeError as e:
-        if "This event loop is already running" in str(e):
-            # Handle the situation where the event loop is already running (e.g., Jupyter)
-            logger.info("Event loop already running. Running bot in existing loop.")
-            loop = asyncio.get_event_loop()
-            loop.create_task(main())
-            loop.run_forever()
-        else:
-            raise
+# Start the bot in Jupyter Notebook
+try:
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
+except RuntimeError as e:
+    if "This event loop is already running" in str(e):
+        logger.info("Event loop already running. Running bot in existing loop.")
+        asyncio.ensure_future(main())
+    else:
+        raise
