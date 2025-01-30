@@ -1,23 +1,3 @@
-'''import os
-from dotenv import load_dotenv
-
-# Load .env file
-load_dotenv()
-
-# Get API Keys and Tokens from Environment Variables
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-WEB_SEARCH_API_KEY = os.getenv("WEB_SEARCH_API_KEY")
-MONGO_URI = os.getenv("MONGO_URI")
-
-# Check if any variable is missing
-if not all([BOT_TOKEN, GEMINI_API_KEY, WEB_SEARCH_API_KEY, MONGO_URI]):
-    raise ValueError("One or more environment variables are missing! Check your .env file.")
-
-# Print confirmation (optional)
-print("Configuration loaded successfully!")'''
-
-
 import os
 from dotenv import load_dotenv
 from pymongo import MongoClient
@@ -48,11 +28,5 @@ files_collection = db['files']
 print("Configuration loaded successfully!")
 
 
-import requests
-
-TOKEN = os.getenv("BOT_TOKEN")
-url = f"https://api.telegram.org/bot{TOKEN}/getMe"
-response = requests.get(url)
-print(response.json())
 
 
