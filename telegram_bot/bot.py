@@ -1,28 +1,23 @@
 import os
 import logging
 import requests
-import shutil
 import nest_asyncio
 import asyncio
-from datetime import datetime 
+from datetime import datetime
 from dotenv import load_dotenv
 from pymongo import MongoClient
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 
-load_dotenv()
-
-# Constants for API URLs and keys
-GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={os.getenv('GEMINI_API_KEY')}"
-BRAVE_SEARCH_API_KEY = os.getenv("BRAVE_SEARCH_API_KEY")
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-MONGO_URI = os.getenv("MONGO_URI")
-
 # Enable asyncio for Jupyter
 nest_asyncio.apply()
 
+# Load environment variables
 
+
+# API URLs
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
+BRAVE_SEARCH_API_URL = "https://api.search.brave.com/res/v1/web/search"
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
@@ -68,18 +63,13 @@ async def chat(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
     
     try:
-        payload = {
-            "contents": [{"parts": [{"text": user_input}]}]
-        }
-
+        payload = {"contents": [{"parts": [{"text": user_input}]}]}
         response = requests.post(
             GEMINI_API_URL,
             headers={"Content-Type": "application/json"},
             json=payload
         ).json()
-
         bot_response = response.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "Sorry, I couldn't understand that.")
-
     except Exception as e:
         logger.error(f"Gemini API Error: {e}")
         bot_response = "Sorry, there was an issue generating a response."
@@ -100,15 +90,15 @@ async def web_search(update: Update, context: CallbackContext) -> None:
         return
 
     try:
-        search_results = requests.get(
-            "https://api.search.brave.com/res/v1/web/search",
-            headers={"Authorization": f"Bearer {BRAVE_SEARCH_API_KEY}"},
-            params={"q": query}
-        ).json()
-
-        results = search_results.get('webPages', {}).get('value', [])[:3]
-        summary = "\n".join([f"{result['title']}: {result['url']}" for result in results])
-
+        response = requests.get(
+            BRAVE_SEARCH_API_URL,
+            headers={"X-Subscription-Token": BRAVE_SEARCH_API_KEY},
+            params={"q": query, "count": 5}
+        )
+        search_results = response.json()
+        results = search_results.get("web", {}).get("results", [])[:3]
+        
+        summary = "\n".join([f"{idx+1}. {res.get('title', 'No Title')}: {res.get('url', 'No URL')}" for idx, res in enumerate(results)])
         await update.message.reply_text(f"Top results:\n{summary}" if summary else "No results found.")
     except Exception as e:
         logger.error(f"Web Search Error: {e}")
@@ -126,14 +116,13 @@ async def file_handler(update: Update, context: CallbackContext) -> None:
             file_path = await context.bot.get_file(file_id)
             await file_path.download_to_drive(file_name)
             description = f"Processed {file_name}"
-
+            
             files_collection.insert_one({
                 "chat_id": chat_id,
                 "file_name": file_name,
                 "description": description,
                 "timestamp": datetime.utcnow()
             })
-
             await update.message.reply_text(f"File received: {file_name}. Description: {description}")
         except Exception as e:
             logger.error(f"File Handling Error: {e}")
