@@ -3,6 +3,7 @@ google-generativeai
 pymongo
 python-dotenv
 textblob
+transformers
 nltk
 matplotlib
 google-cloud-translate
