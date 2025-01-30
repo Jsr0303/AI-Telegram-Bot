@@ -47,3 +47,12 @@ files_collection = db['files']
 # Print confirmation (optional)
 print("Configuration loaded successfully!")
 
+
+import requests
+
+TOKEN = os.getenv("BOT_TOKEN")
+url = f"https://api.telegram.org/bot{TOKEN}/getMe"
+response = requests.get(url)
+print(response.json())
+
+
