@@ -1,0 +1,11 @@
+python-telegram-bot>=20.0
+python-dotenv
+pymongo
+requests
+transformers
+torch
+nest-asyncio
+nltk
+matplotlib
+google-generativeai
+google-cloud-translate
