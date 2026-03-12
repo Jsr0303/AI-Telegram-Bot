@@ -132,57 +132,48 @@ pipeline {
         // FIX 4: Verify .env was written correctly
         // ----------------------------------------
         stage('Deploy') {
-            when {
-                expression { return params.SKIP_DEPLOY == false }
-            }
-            steps {
-                echo "====== Deploying to: ${params.DEPLOY_ENV} ======"
-                sh """
-                    echo "Stopping any existing bot..."
-                    pkill -f "python3 bot.py" || echo "No existing process"
-                    sleep 2
+    when {
+        expression { return params.SKIP_DEPLOY == false }
+    }
+    steps {
+        echo "====== Deploying to: ${params.DEPLOY_ENV} ======"
+        sh """
+            echo "Writing .env file..."
+            printf 'BOT_TOKEN=%s\\nGEMINI_API_KEY=%s\\nBRAVE_SEARCH_API_KEY=%s\\nMONGO_URI=%s\\n' \
+                '${BOT_TOKEN}' \
+                '${GEMINI_API_KEY}' \
+                '${BRAVE_SEARCH_API_KEY}' \
+                '${MONGO_URI}' > .env
 
-                    echo "Writing .env file..."
-                    printf 'BOT_TOKEN=%s\nGEMINI_API_KEY=%s\nBRAVE_SEARCH_API_KEY=%s\nMONGO_URI=%s\n' \
-                        '${BOT_TOKEN}' \
-                        '${GEMINI_API_KEY}' \
-                        '${BRAVE_SEARCH_API_KEY}' \
-                        '${MONGO_URI}' > .env
+            echo ".env written!"
 
-                    echo ".env file written!"
-                    echo "Lines in .env: \$(wc -l < .env)"
+            . ${VENV_DIR}/bin/activate
 
-                    if [ ! -f .env ]; then
-                        echo ".env file MISSING - cannot start bot!"
-                        exit 1
-                    fi
+            echo "Stopping old bot if running..."
+            pkill -f "python3 bot.py" || echo "No existing process"
+            sleep 2
 
-                    echo "Activating venv..."
-                    . ${VENV_DIR}/bin/activate
+            echo "Starting bot detached from Jenkins..."
+            nohup /var/lib/jenkins/workspace/1/venv/bin/python3 /var/lib/jenkins/workspace/1/bot.py \
+                > /var/lib/jenkins/workspace/1/bot.log 2>&1 &
+            disown \$!
 
-                    echo "Starting bot in background..."
-                    nohup python3 bot.py > bot.log 2>&1 &
-                    BOT_PID=\$!
-                    echo "Bot PID: \$BOT_PID"
+            sleep 8
 
-                    echo "Waiting 10 seconds for bot to initialize..."
-                    sleep 10
+            echo "=== BOT LOG ==="
+            cat /var/lib/jenkins/workspace/1/bot.log
+            echo "==============="
 
-                    echo "=== BOT.LOG CONTENTS ==="
-                    cat bot.log
-                    echo "========================"
-
-                    if kill -0 \$BOT_PID 2>/dev/null; then
-                        echo "Bot is RUNNING successfully!"
-                    else
-                        echo "Bot CRASHED after startup!"
-                        echo "Full bot.log:"
-                        cat bot.log
-                        exit 1
-                    fi
-                """
-            }
-        }
+            if pgrep -f "python3 bot.py" > /dev/null; then
+                echo "Bot is RUNNING!"
+            else
+                echo "Bot CRASHED!"
+                cat /var/lib/jenkins/workspace/1/bot.log
+                exit 1
+            fi
+        """
+    }
+}
 
         // ----------------------------------------
         // STAGE 6: HEALTH CHECK
