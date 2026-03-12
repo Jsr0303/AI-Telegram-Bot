@@ -227,13 +227,7 @@ PYCHECK
     }
 
     post {
-        always {
-            node(null) {
-                sh 'rm -f .env || true'
-            }
-            echo "Build Result: ${currentBuild.currentResult}"
-            echo "Job: ${env.JOB_NAME} | Build: #${env.BUILD_NUMBER}"
-        }
+       
         success {
             echo 'BUILD SUCCEEDED - Bot is running!'
         }
