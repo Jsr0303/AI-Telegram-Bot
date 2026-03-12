@@ -28,9 +28,9 @@ pipeline {
     //   Kind: "Secret text" → paste your key → set the ID below
     // ----------------------------------------------------------
     environment {
-        TELEGRAM_BOT_TOKEN = credentials('8131763414:AAGBp7xYFFT2VfaDyx7_O1gfrJX9kVa63dc')  // Telegram Bot Token
-        GEMINI_API_KEY     = credentials('AIzaSyD5n61roId4A5BNlV4_w5n_7iDncOKMpBM')       // Google Gemini API Key
-        BRAVE_API_KEY      = credentials('BSAQrZFa4CXjLzRa67DEzVHf5J0WuWJ')        // Brave Search API Key
+        TELEGRAM_BOT_TOKEN = credentials('TELEGRAM_BOT_TOKEN')  // Telegram Bot Token
+        GEMINI_API_KEY     = credentials('GEMINI_API_KEY')       // Google Gemini API Key
+        BRAVE_API_KEY      = credentials('BRAVE_API_KEY')        // Brave Search API Key
         MONGODB_URI        = credentials('MONGODB_URI')          // MongoDB URI
         VENV_DIR           = 'venv'                              // Virtual env folder
     }
