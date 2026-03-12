@@ -31,7 +31,7 @@ pipeline {
         BOT_TOKEN = credentials('TELEGRAM_BOT_TOKEN')  // Telegram Bot Token
         GEMINI_API_KEY     = credentials('GEMINI_API_KEY')       // Google Gemini API Key
         BRAVE_SEARCH_API_KEY      = credentials('BRAVE_API_KEY')        // Brave Search API Key
-        MONGODB_URI        = credentials('MONGODB_URI')          // MongoDB URI
+        MONGO_URI        = credentials('MONGO_URI')          // MongoDB URI
         VENV_DIR           = 'venv'                              // Virtual env folder
     }
 
