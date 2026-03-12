@@ -3,14 +3,10 @@ pipeline {
     agent any
 
     environment {
-        // --------------------------------------------------
-        // These names on LEFT must match your code (config.py)
-        // Values on RIGHT must match Jenkins Credential IDs
-        // --------------------------------------------------
-        BOT_TOKEN            = credentials('TELEGRAM_BOT_TOKEN')  // matches config.py BOT_TOKEN
-        GEMINI_API_KEY       = credentials('GEMINI_API_KEY')       // matches config.py GEMINI_API_KEY
-        BRAVE_SEARCH_API_KEY = credentials('BRAVE_API_KEY')        // matches config.py BRAVE_SEARCH_API_KEY
-        MONGO_URI            = credentials('MONGODB_URI')          // matches config.py MONGO_URI
+        BOT_TOKEN            = credentials('TELEGRAM_BOT_TOKEN')
+        GEMINI_API_KEY       = credentials('GEMINI_API_KEY')
+        BRAVE_SEARCH_API_KEY = credentials('BRAVE_API_KEY')
+        MONGO_URI            = credentials('MONGODB_URI')
         VENV_DIR             = 'venv'
     }
 
@@ -42,7 +38,6 @@ pipeline {
 
         // ----------------------------------------
         // STAGE 1: CHECKOUT
-        // Clone repo from GitHub into workspace
         // ----------------------------------------
         stage('Checkout') {
             steps {
@@ -59,7 +54,6 @@ pipeline {
 
         // ----------------------------------------
         // STAGE 2: ENVIRONMENT SETUP
-        // Create Python virtual environment
         // ----------------------------------------
         stage('Environment Setup') {
             steps {
@@ -76,7 +70,6 @@ pipeline {
 
         // ----------------------------------------
         // STAGE 3: INSTALL DEPENDENCIES
-        // Install all packages from requirements.txt
         // ----------------------------------------
         stage('Install Dependencies') {
             steps {
@@ -84,25 +77,20 @@ pipeline {
                 sh '''
                     echo "requirements.txt:"
                     cat requirements.txt
-                    echo ""
                     . ${VENV_DIR}/bin/activate
                     pip install -r requirements.txt --quiet
                     echo "All packages installed!"
-                    pip list
                 '''
             }
         }
 
         // ----------------------------------------
         // STAGE 4: VALIDATE CONFIG
-        // Check all secrets are present before deploy
-        // Variable names match exactly what config.py uses
         // ----------------------------------------
         stage('Validate Config') {
             steps {
                 echo '====== Validating secrets ======'
                 sh '''
-                    echo "Checking BOT_TOKEN..."
                     if [ -z "$BOT_TOKEN" ]; then
                         echo "BOT_TOKEN is MISSING!"
                         exit 1
@@ -110,7 +98,6 @@ pipeline {
                         echo "BOT_TOKEN is set"
                     fi
 
-                    echo "Checking GEMINI_API_KEY..."
                     if [ -z "$GEMINI_API_KEY" ]; then
                         echo "GEMINI_API_KEY is MISSING!"
                         exit 1
@@ -118,7 +105,6 @@ pipeline {
                         echo "GEMINI_API_KEY is set"
                     fi
 
-                    echo "Checking BRAVE_SEARCH_API_KEY..."
                     if [ -z "$BRAVE_SEARCH_API_KEY" ]; then
                         echo "BRAVE_SEARCH_API_KEY is MISSING!"
                         exit 1
@@ -126,7 +112,6 @@ pipeline {
                         echo "BRAVE_SEARCH_API_KEY is set"
                     fi
 
-                    echo "Checking MONGO_URI..."
                     if [ -z "$MONGO_URI" ]; then
                         echo "MONGO_URI is MISSING!"
                         exit 1
@@ -135,15 +120,16 @@ pipeline {
                     fi
 
                     echo "All secrets present!"
-                    echo "Deploy target: ${DEPLOY_ENV}"
                 '''
             }
         }
 
         // ----------------------------------------
         // STAGE 5: DEPLOY
-        // Start the bot with correct env variables
-        // .env file uses same names as config.py
+        // FIX 1: Write .env BEFORE activating venv
+        // FIX 2: Show bot.log contents always
+        // FIX 3: Longer wait time (8s not 5s)
+        // FIX 4: Verify .env was written correctly
         // ----------------------------------------
         stage('Deploy') {
             when {
@@ -151,42 +137,57 @@ pipeline {
             }
             steps {
                 echo "====== Deploying to: ${params.DEPLOY_ENV} ======"
-                sh '''
+                sh """
                     echo "Stopping any existing bot..."
                     pkill -f "python3 bot.py" || echo "No existing process"
                     sleep 2
 
                     echo "Writing .env file..."
-                    cat > .env << ENVEOF
-BOT_TOKEN=${BOT_TOKEN}
-GEMINI_API_KEY=${GEMINI_API_KEY}
-BRAVE_SEARCH_API_KEY=${BRAVE_SEARCH_API_KEY}
-MONGO_URI=${MONGO_URI}
-ENVEOF
+                    printf 'BOT_TOKEN=%s\nGEMINI_API_KEY=%s\nBRAVE_SEARCH_API_KEY=%s\nMONGO_URI=%s\n' \
+                        '${BOT_TOKEN}' \
+                        '${GEMINI_API_KEY}' \
+                        '${BRAVE_SEARCH_API_KEY}' \
+                        '${MONGO_URI}' > .env
 
-                    echo ".env file created with correct variable names"
+                    echo ".env file written!"
+                    echo "Lines in .env: \$(wc -l < .env)"
 
+                    if [ ! -f .env ]; then
+                        echo ".env file MISSING - cannot start bot!"
+                        exit 1
+                    fi
+
+                    echo "Activating venv..."
                     . ${VENV_DIR}/bin/activate
-                    echo "Starting bot..."
-                    nohup python3 bot.py > bot.log 2>&1 &
-                    BOT_PID=$!
-                    echo "Bot started with PID: $BOT_PID"
 
-                    sleep 5
-                    if kill -0 $BOT_PID 2>/dev/null; then
-                        echo "Bot is RUNNING!"
+                    echo "Starting bot in background..."
+                    nohup python3 bot.py > bot.log 2>&1 &
+                    BOT_PID=\$!
+                    echo "Bot PID: \$BOT_PID"
+
+                    echo "Waiting 10 seconds for bot to initialize..."
+                    sleep 10
+
+                    echo "=== BOT.LOG CONTENTS ==="
+                    cat bot.log
+                    echo "========================"
+
+                    if kill -0 \$BOT_PID 2>/dev/null; then
+                        echo "Bot is RUNNING successfully!"
                     else
-                        echo "Bot crashed! Logs:"
+                        echo "Bot CRASHED after startup!"
+                        echo "Full bot.log:"
                         cat bot.log
                         exit 1
                     fi
-                '''
+                """
             }
         }
 
         // ----------------------------------------
         // STAGE 6: HEALTH CHECK
-        // Verify bot is running after deploy
+        // FIX 5: Check google.genai not generativeai
+        // FIX 6: Show bot.log after health check
         // ----------------------------------------
         stage('Health Check') {
             when {
@@ -197,28 +198,48 @@ ENVEOF
                 sh '''
                     . ${VENV_DIR}/bin/activate
 
+                    echo "Checking bot process..."
                     if pgrep -f "python3 bot.py" > /dev/null; then
                         echo "Bot process is RUNNING"
                     else
-                        echo "Bot process not found"
+                        echo "Bot process NOT FOUND - crashed!"
+                        echo "=== BOT LOG ==="
+                        cat bot.log
+                        echo "==============="
+                        exit 1
                     fi
 
+                    echo ""
                     echo "Checking Python imports..."
                     python3 - << PYCHECK
 import sys
 print(f"Python {sys.version}")
 modules = {
-    "telegram": "python-telegram-bot",
-    "google.generativeai": "google-generativeai",
-    "pymongo": "pymongo",
+    "telegram":          "python-telegram-bot",
+    "google.genai":      "google-genai",
+    "pymongo":           "pymongo",
+    "transformers":      "transformers",
+    "dotenv":            "python-dotenv",
 }
+all_ok = True
 for mod, name in modules.items():
     try:
         __import__(mod)
         print(f"  OK: {name}")
     except ImportError as e:
-        print(f"  MISSING: {name} - {e}")
+        print(f"  MISSING: {name} -> {e}")
+        all_ok = False
+if all_ok:
+    print("All imports OK!")
+else:
+    print("Some imports FAILED!")
 PYCHECK
+
+                    echo ""
+                    echo "=== FINAL BOT LOG ==="
+                    cat bot.log
+                    echo "====================="
+
                     echo "Health check complete!"
                 '''
             }
@@ -227,12 +248,19 @@ PYCHECK
     }
 
     post {
-       
         success {
+            echo '======================================'
             echo 'BUILD SUCCEEDED - Bot is running!'
+            echo 'Open Telegram and message your bot!'
+            echo '======================================'
         }
         failure {
+            echo '======================================'
             echo 'BUILD FAILED - Check logs above'
+            echo '======================================'
+        }
+        always {
+            echo "Job: ${env.JOB_NAME} | Build: #${env.BUILD_NUMBER} | Result: ${currentBuild.currentResult}"
         }
     }
 
