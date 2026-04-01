@@ -1,6 +1,4 @@
 import logging
-import asyncio
-import nest_asyncio
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 from config import BOT_TOKEN
@@ -9,10 +7,9 @@ from handlers.chat import chat
 from handlers.websearch import web_search
 from handlers.file_handler import file_handler
 
-nest_asyncio.apply()
 logging.basicConfig(level=logging.INFO)
 
-async def main():
+def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -21,6 +18,7 @@ async def main():
     app.add_handler(CommandHandler("websearch", web_search))
     app.add_handler(MessageHandler(filters.Document.ALL | filters.PHOTO, file_handler))
 
-    await app.run_polling()
+    app.run_polling()
 
-asyncio.run(main())
+if __name__ == "__main__":
+    main()
